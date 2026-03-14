@@ -9,6 +9,12 @@ import logging
 import schedule
 from datetime import datetime
 
+# ══════════════════════════════════════════════
+#  CONFIGURACIÓN DEL HORARIO
+# ══════════════════════════════════════════════
+# Cambia esta hora según necesites (formato 24h: "HH:MM")
+HORA_EJECUCION = os.getenv('SYNC_HORA', '23:59')  # Por defecto 23:59 (11:59 PM)
+
 # Asegurar que el directorio de trabajo sea el del script
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -54,15 +60,20 @@ def main():
     log.info("╚" + "═" * 68 + "╝")
     log.info("")
     log.info("Configuración:")
-    log.info("  • Horario: Todos los días a las 23:59 (11:59 PM)")
+    log.info(f"  • Horario: Todos los días a las {HORA_EJECUCION}")
     log.info("  • Script: sync_shopify_products.py")
     log.info("")
     log.info("Servicio iniciado correctamente")
     log.info("Esperando horario programado...")
     log.info("")
     
-    # Programar ejecución diaria a las 23:59
-    schedule.every().day.at("23:59").do(ejecutar_sincronizacion)
+    # Programar ejecución diaria
+    schedule.every().day.at(HORA_EJECUCION).do(ejecutar_sincronizacion)
+    
+    # Mostrar próxima ejecución
+    proxima = schedule.next_run()
+    if proxima:
+        log.info(f"Próxima ejecución programada: {proxima.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Loop principal del servicio
     while True:

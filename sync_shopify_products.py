@@ -151,18 +151,51 @@ def obtener_token_shopify() -> str:
 # ══════════════════════════════════════════════
 
 def obtener_productos_api() -> list:
-    """Consulta la API de inventario de Centro Japón."""
-    log.info("Consultando API de inventario...")
-    resp = requests.get(API_URL, timeout=120)
-    resp.raise_for_status()
+    """Consulta la API de inventario de Centro Japón con reintentos."""
+    max_reintentos = 5
+    timeout_inicial = 180  # 3 minutos
+    
+    for intento in range(1, max_reintentos + 1):
+        try:
+            timeout = timeout_inicial * intento  # Aumentar timeout en cada intento
+            log.info(f"Consultando API de inventario (intento {intento}/{max_reintentos}, timeout: {timeout}s)...")
+            
+            resp = requests.get(API_URL, timeout=timeout)
+            resp.raise_for_status()
 
-    data = resp.json()
-    if not data.get('success', True):
-        raise Exception(f"Error en API: {data.get('error')}")
+            data = resp.json()
+            if not data.get('success', True):
+                raise Exception(f"Error en API: {data.get('error')}")
 
-    productos = data.get('data', [])
-    log.info(f"Recibidos {len(productos)} productos de la API")
-    return productos
+            productos = data.get('data', [])
+            log.info(f"✓ Recibidos {len(productos)} productos de la API")
+            return productos
+            
+        except requests.exceptions.Timeout as e:
+            log.warning(f"✗ Timeout en intento {intento}/{max_reintentos}: {e}")
+            if intento < max_reintentos:
+                espera = 30 * intento  # Esperar más tiempo entre reintentos
+                log.info(f"  Esperando {espera}s antes de reintentar...")
+                time.sleep(espera)
+            else:
+                log.error(f"✗ Se agotaron los {max_reintentos} intentos. La API no responde.")
+                raise
+                
+        except requests.exceptions.ConnectionError as e:
+            log.warning(f"✗ Error de conexión en intento {intento}/{max_reintentos}: {e}")
+            if intento < max_reintentos:
+                espera = 30 * intento
+                log.info(f"  Esperando {espera}s antes de reintentar...")
+                time.sleep(espera)
+            else:
+                log.error(f"✗ Se agotaron los {max_reintentos} intentos. No se puede conectar a la API.")
+                raise
+                
+        except Exception as e:
+            log.error(f"✗ Error inesperado: {e}")
+            raise
+    
+    raise Exception("No se pudo obtener productos de la API después de múltiples intentos")
 
 
 # ══════════════════════════════════════════════
