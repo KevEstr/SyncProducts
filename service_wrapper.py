@@ -8,6 +8,10 @@ import time
 import logging
 import schedule
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # ══════════════════════════════════════════════
 #  CONFIGURACIÓN DEL HORARIO
