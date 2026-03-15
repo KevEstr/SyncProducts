@@ -5,6 +5,7 @@ Consulta inventario desde la API y crea/actualiza productos en Shopify.
 import os
 import sys
 import time
+import json
 import logging
 import requests
 from dotenv import load_dotenv
@@ -151,51 +152,46 @@ def obtener_token_shopify() -> str:
 # ══════════════════════════════════════════════
 
 def obtener_productos_api() -> list:
-    """Consulta la API de inventario de Centro Japón con reintentos."""
-    max_reintentos = 5
-    timeout_inicial = 180  # 3 minutos
+    """Consulta la API de inventario de Centro Japón y guarda en cache."""
+    cache_file = 'productos_cache.json'
     
-    for intento in range(1, max_reintentos + 1):
+    try:
+        log.info("Consultando API de inventario...")
+        resp = requests.get(API_URL, timeout=60)
+        resp.raise_for_status()
+
+        data = resp.json()
+        if not data.get('success', True):
+            raise Exception(f"Error en API: {data.get('error')}")
+
+        productos = data.get('data', [])
+        log.info(f"✓ Recibidos {len(productos)} productos de la API")
+        
+        # Guardar en cache
         try:
-            timeout = timeout_inicial * intento  # Aumentar timeout en cada intento
-            log.info(f"Consultando API de inventario (intento {intento}/{max_reintentos}, timeout: {timeout}s)...")
-            
-            resp = requests.get(API_URL, timeout=timeout)
-            resp.raise_for_status()
-
-            data = resp.json()
-            if not data.get('success', True):
-                raise Exception(f"Error en API: {data.get('error')}")
-
-            productos = data.get('data', [])
-            log.info(f"✓ Recibidos {len(productos)} productos de la API")
-            return productos
-            
-        except requests.exceptions.Timeout as e:
-            log.warning(f"✗ Timeout en intento {intento}/{max_reintentos}: {e}")
-            if intento < max_reintentos:
-                espera = 30 * intento  # Esperar más tiempo entre reintentos
-                log.info(f"  Esperando {espera}s antes de reintentar...")
-                time.sleep(espera)
-            else:
-                log.error(f"✗ Se agotaron los {max_reintentos} intentos. La API no responde.")
-                raise
-                
-        except requests.exceptions.ConnectionError as e:
-            log.warning(f"✗ Error de conexión en intento {intento}/{max_reintentos}: {e}")
-            if intento < max_reintentos:
-                espera = 30 * intento
-                log.info(f"  Esperando {espera}s antes de reintentar...")
-                time.sleep(espera)
-            else:
-                log.error(f"✗ Se agotaron los {max_reintentos} intentos. No se puede conectar a la API.")
-                raise
-                
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(productos, f, ensure_ascii=False, indent=2)
+            log.info(f"✓ Productos guardados en cache: {cache_file}")
         except Exception as e:
-            log.error(f"✗ Error inesperado: {e}")
-            raise
-    
-    raise Exception("No se pudo obtener productos de la API después de múltiples intentos")
+            log.warning(f"No se pudo guardar cache: {e}")
+        
+        return productos
+        
+    except Exception as e:
+        log.error(f"✗ Error al consultar API: {e}")
+        
+        # Intentar cargar desde cache si existe
+        if os.path.exists(cache_file):
+            log.info(f"Intentando cargar desde cache: {cache_file}")
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    productos = json.load(f)
+                log.info(f"✓ Cargados {len(productos)} productos desde cache")
+                return productos
+            except Exception as cache_error:
+                log.error(f"✗ Error al cargar cache: {cache_error}")
+        
+        raise Exception(f"No se pudo obtener productos de la API ni del cache: {e}")
 
 
 # ══════════════════════════════════════════════
