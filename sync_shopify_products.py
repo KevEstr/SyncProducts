@@ -288,12 +288,11 @@ def crear_producto(token: str, producto: dict) -> dict:
 
 
 def actualizar_producto(token: str, product_id: int, variant_id: int, producto: dict) -> dict:
-    """Actualiza título y precio de un producto existente en Shopify."""
+    """Actualiza SOLO el precio de un producto existente en Shopify."""
     url = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}/products/{product_id}.json"
     payload = {
         'product': {
             'id': product_id,
-            'title': producto['descripcion'].strip(),
             'variants': [{
                 'id': variant_id,
                 'price': str(producto.get('precio_venta_2', 0))
@@ -352,6 +351,7 @@ def sincronizar():
     # 5. Sincronizar producto por producto
     creados = 0
     actualizados = 0
+    ignorados = 0
     errores = 0
     total = len(productos_api)
 
@@ -364,7 +364,7 @@ def sincronizar():
 
         if not sku:
             log.warning(f"  [{i}/{total}] Producto sin cod_largo/cod_invent, saltando: {nombre}")
-            errores += 1
+            ignorados += 1
             continue
 
         try:
@@ -382,22 +382,9 @@ def sincronizar():
                 log.info(f"  [{i}/{total}] ACTUALIZADO: {sku} - {nombre} (stock: {cantidad})")
 
             else:
-                # ─── CREAR producto nuevo ───
-                nuevo = crear_producto(token, producto)
-
-                variant = nuevo['variants'][0]
-                if variant.get('inventory_item_id'):
-                    actualizar_inventario(token, location_id, variant['inventory_item_id'], cantidad)
-
-                # Agregar al índice para evitar duplicados en esta misma ejecución
-                indice_sku[sku] = {
-                    'product_id': nuevo['id'],
-                    'variant_id': variant['id'],
-                    'inventory_item_id': variant.get('inventory_item_id')
-                }
-
-                creados += 1
-                log.info(f"  [{i}/{total}] CREADO: {sku} - {nombre} (stock: {cantidad})")
+                # ─── IGNORAR producto que no existe ───
+                ignorados += 1
+                log.debug(f"  [{i}/{total}] IGNORADO (no existe en Shopify): {sku} - {nombre}")
 
         except requests.exceptions.HTTPError as e:
             errores += 1
@@ -411,8 +398,8 @@ def sincronizar():
     # ─── Resumen final ───
     log.info("=" * 60)
     log.info("SINCRONIZACIÓN COMPLETADA")
-    log.info(f"  Creados:      {creados}")
     log.info(f"  Actualizados: {actualizados}")
+    log.info(f"  Ignorados:    {ignorados} (no existen en Shopify)")
     log.info(f"  Errores:      {errores}")
     log.info(f"  Total:        {total}")
     log.info("=" * 60)
