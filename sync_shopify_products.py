@@ -8,6 +8,7 @@ import time
 import json
 import logging
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -354,6 +355,7 @@ def sincronizar():
     ignorados = 0
     errores = 0
     total = len(productos_api)
+    detalle_productos = []  # ← registro para monitoreo
 
     log.info(f"Iniciando sincronización de {total} productos...")
     log.info("-" * 60)
@@ -380,6 +382,7 @@ def sincronizar():
 
                 actualizados += 1
                 log.info(f"  [{i}/{total}] ACTUALIZADO: {sku} - {nombre} (stock: {cantidad})")
+                detalle_productos.append({"accion": "ACTUALIZADO", "sku": sku, "nombre": nombre, "stock": cantidad})
 
             else:
                 # ─── IGNORAR producto que no existe ───
@@ -390,10 +393,12 @@ def sincronizar():
             errores += 1
             detalle = e.response.text[:200] if e.response else str(e)
             log.error(f"  [{i}/{total}] ERROR HTTP en {sku}: {e.response.status_code} - {detalle}")
+            detalle_productos.append({"accion": "ERROR", "sku": sku, "nombre": nombre, "detalle": detalle})
 
         except Exception as e:
             errores += 1
             log.error(f"  [{i}/{total}] ERROR en {sku}: {e}")
+            detalle_productos.append({"accion": "ERROR", "sku": sku, "nombre": nombre, "detalle": str(e)})
 
     # ─── Resumen final ───
     log.info("=" * 60)
@@ -403,6 +408,23 @@ def sincronizar():
     log.info(f"  Errores:      {errores}")
     log.info(f"  Total:        {total}")
     log.info("=" * 60)
+
+    # ─── Guardar estado para monitoreo ───
+    status = {
+        "ultima_sincronizacion": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "estado": "error" if errores > 0 else "exitoso",
+        "actualizados": actualizados,
+        "ignorados": ignorados,
+        "errores": errores,
+        "total_api": total,
+        "detalle": detalle_productos
+    }
+    try:
+        status_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'status.json')
+        with open(status_file, 'w', encoding='utf-8') as f:
+            json.dump(status, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log.warning(f"No se pudo guardar status.json: {e}")
 
 
 # ══════════════════════════════════════════════

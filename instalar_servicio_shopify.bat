@@ -159,6 +159,14 @@ echo [..] Configurando servicio...
 echo [OK] Servicio registrado
 
 echo.
+echo [..] Abriendo puerto de monitoreo...
+for /f "tokens=2 delims==" %%P in ('findstr /i "MONITOR_PORT" .env 2^>nul') do set MON_PORT=%%P
+if not defined MON_PORT set MON_PORT=5001
+netsh advfirewall firewall delete rule name="ShopifySyncMonitor" >nul 2>&1
+netsh advfirewall firewall add rule name="ShopifySyncMonitor" dir=in action=allow protocol=TCP localport=%MON_PORT%
+echo [OK] Puerto %MON_PORT% abierto para monitoreo
+
+echo.
 echo [..] Iniciando servicio...
 "%NSSM%" start %SERVICE_NAME%
 timeout /t 3 /nobreak >nul
@@ -173,6 +181,15 @@ echo.
 echo   Servicio: %SERVICE_NAME%
 echo   Horario: Todos los dias a las 23:59 (11:59 PM)
 echo   Script: sync_shopify_products.py
+echo.
+echo   Monitor HTTP:
+echo     http://[IP-DE-ESTE-SERVIDOR]:%MON_PORT%/health
+echo     http://[IP-DE-ESTE-SERVIDOR]:%MON_PORT%/status
+echo     http://[IP-DE-ESTE-SERVIDOR]:%MON_PORT%/status/errores
+echo     http://[IP-DE-ESTE-SERVIDOR]:%MON_PORT%/logs
+echo.
+echo   IP de este servidor:
+ipconfig | findstr "IPv4"
 echo.
 echo   Logs del servicio:
 echo     %APP_DIR%\logs\service_out.log

@@ -5,7 +5,9 @@ Ejecuta sync_shopify_products.py en un horario programado.
 import os
 import sys
 import time
+import json
 import logging
+import threading
 import schedule
 from datetime import datetime
 from dotenv import load_dotenv
@@ -18,6 +20,7 @@ load_dotenv()
 # ══════════════════════════════════════════════
 # Cambia esta hora según necesites (formato 24h: "HH:MM")
 HORA_EJECUCION = os.getenv('SYNC_HORA', '23:59')  # Por defecto 23:59 (11:59 PM)
+MONITOR_PORT   = int(os.getenv('MONITOR_PORT', '8091'))
 
 # Asegurar que el directorio de trabajo sea el del script
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +38,60 @@ logging.basicConfig(
     ]
 )
 log = logging.getLogger(__name__)
+
+
+def iniciar_monitor():
+    """Inicia servidor Flask de monitoreo en un hilo separado."""
+    try:
+        from flask import Flask, jsonify
+        app = Flask(__name__)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        @app.route('/status', methods=['GET'])
+        def status():
+            status_file = os.path.join(base_dir, 'status.json')
+            if not os.path.exists(status_file):
+                return jsonify({"estado": "sin_datos", "mensaje": "Aún no se ha ejecutado ninguna sincronización"}), 200
+            with open(status_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return jsonify(data), 200
+
+        @app.route('/status/errores', methods=['GET'])
+        def status_errores():
+            status_file = os.path.join(base_dir, 'status.json')
+            if not os.path.exists(status_file):
+                return jsonify({"estado": "sin_datos"}), 200
+            with open(status_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            solo_errores = [p for p in data.get('detalle', []) if p.get('accion') == 'ERROR']
+            return jsonify({
+                "ultima_sincronizacion": data.get('ultima_sincronizacion'),
+                "total_errores": len(solo_errores),
+                "errores": solo_errores
+            }), 200
+
+        @app.route('/logs', methods=['GET'])
+        def logs():
+            log_file = os.path.join(base_dir, 'sync.log')
+            if not os.path.exists(log_file):
+                return jsonify({"error": "sync.log no encontrado"}), 404
+            with open(log_file, 'r', encoding='utf-8') as f:
+                lineas = f.readlines()
+            # Últimas 500 líneas para no saturar
+            return jsonify({"lineas": [l.rstrip() for l in lineas[-500:]]}), 200
+
+        @app.route('/health', methods=['GET'])
+        def health():
+            return jsonify({"servicio": "ShopifySyncCentroJapon", "estado": "running"}), 200
+
+        log.info(f"Monitor HTTP iniciado en http://0.0.0.0:{MONITOR_PORT}")
+        log.info(f"  /status  → resumen última sincronización")
+        log.info(f"  /logs    → últimas 500 líneas del log")
+        log.info(f"  /health  → estado del servicio")
+        # use_reloader=False y threaded=True para que funcione en hilo
+        app.run(host='0.0.0.0', port=MONITOR_PORT, use_reloader=False, threaded=True)
+    except Exception as e:
+        log.error(f"Error al iniciar monitor HTTP: {e}")
 
 
 def ejecutar_sincronizacion():
@@ -73,6 +130,10 @@ def main():
     
     # Programar ejecución diaria
     schedule.every().day.at(HORA_EJECUCION).do(ejecutar_sincronizacion)
+
+    # Iniciar monitor HTTP en hilo separado
+    hilo_monitor = threading.Thread(target=iniciar_monitor, daemon=True)
+    hilo_monitor.start()
     
     # Mostrar próxima ejecución
     proxima = schedule.next_run()
