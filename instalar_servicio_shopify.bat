@@ -86,13 +86,13 @@ echo [OK] Archivo .env encontrado
 echo.
 echo [..] Creando entorno virtual...
 if not exist "venv" (
-    %PYTHON% -m venv venv
+    "%PYTHON%" -m venv venv
     if %errorlevel% neq 0 ( echo [ERROR] No se pudo crear venv. & pause & exit /b 1 )
 )
 echo [OK] Entorno virtual listo
 
 echo [..] Instalando dependencias...
-venv\Scripts\pip.exe install -r requirements.txt --quiet
+"%~dp0venv\Scripts\pip.exe" install -r requirements.txt --quiet
 if %errorlevel% neq 0 ( echo [ERROR] Fallo instalacion de dependencias. & pause & exit /b 1 )
 echo [OK] Dependencias instaladas
 
