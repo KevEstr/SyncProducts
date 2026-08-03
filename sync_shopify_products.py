@@ -1,6 +1,7 @@
 """
 Sincronización de productos: API Centro Japón → Shopify
 Consulta inventario desde la API y crea/actualiza productos en Shopify.
+Al finalizar cada sincronización sube sync.log a Cloudflare R2.
 """
 import os
 import sys
@@ -22,6 +23,14 @@ SHOPIFY_CLIENT_SECRET = os.getenv('SHOPIFY_CLIENT_SECRET', '')
 API_URL = os.getenv('API_URL', '')
 API_VERSION = '2024-01'
 SYNC_LIMIT = int(os.getenv('SYNC_LIMIT', '0'))
+
+# Cloudflare R2
+CF_R2_ACCOUNT_ID     = os.getenv('CF_R2_ACCOUNT_ID', '')
+CF_R2_ACCESS_KEY_ID  = os.getenv('CF_R2_ACCESS_KEY_ID', '')
+CF_R2_SECRET_ACCESS_KEY = os.getenv('CF_R2_SECRET_ACCESS_KEY', '')
+CF_R2_BUCKET_NAME    = os.getenv('CF_R2_BUCKET_NAME', 'syncshopify-logs')
+CF_R2_OBJECT_KEY     = os.getenv('CF_R2_OBJECT_KEY', 'sync.log')
+CF_R2_PUBLIC_URL     = os.getenv('CF_R2_PUBLIC_URL', '')
 
 # ──────────────────────────────────────────────
 #  LOGGING
@@ -318,6 +327,55 @@ def actualizar_inventario(token: str, location_id: int, inventory_item_id: int, 
 
 
 # ══════════════════════════════════════════════
+#  CLOUDFLARE R2 — SUBIDA DE LOGS
+# ══════════════════════════════════════════════
+
+def subir_log_r2():
+    """
+    Sube sync.log a Cloudflare R2 sobreescribiendo el mismo objeto.
+    Si las variables R2 no están configuradas, omite silenciosamente.
+    """
+    if not all([CF_R2_ACCOUNT_ID, CF_R2_ACCESS_KEY_ID, CF_R2_SECRET_ACCESS_KEY]):
+        log.debug("R2 no configurado, omitiendo subida de log.")
+        return
+
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sync.log')
+    if not os.path.exists(log_file):
+        log.warning("sync.log no encontrado, no se puede subir a R2.")
+        return
+
+    try:
+        import boto3
+        from botocore.config import Config
+
+        endpoint = f"https://{CF_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        s3 = boto3.client(
+            's3',
+            endpoint_url=endpoint,
+            aws_access_key_id=CF_R2_ACCESS_KEY_ID,
+            aws_secret_access_key=CF_R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version='s3v4'),
+            region_name='auto'
+        )
+
+        with open(log_file, 'rb') as f:
+            s3.put_object(
+                Bucket=CF_R2_BUCKET_NAME,
+                Key=CF_R2_OBJECT_KEY,
+                Body=f,
+                ContentType='text/plain; charset=utf-8'
+            )
+
+        destino = CF_R2_PUBLIC_URL if CF_R2_PUBLIC_URL else f"{endpoint}/{CF_R2_BUCKET_NAME}/{CF_R2_OBJECT_KEY}"
+        log.info(f"✓ Log subido a Cloudflare R2: {destino}")
+
+    except ImportError:
+        log.error("boto3 no instalado. Ejecuta: pip install boto3")
+    except Exception as e:
+        log.error(f"✗ Error al subir log a R2: {e}")
+
+
+# ══════════════════════════════════════════════
 #  SINCRONIZACIÓN PRINCIPAL
 # ══════════════════════════════════════════════
 
@@ -430,6 +488,9 @@ def sincronizar():
             json.dump(status, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log.warning(f"No se pudo guardar status.json: {e}")
+
+    # ─── Subir log a Cloudflare R2 ───
+    subir_log_r2()
 
 
 # ══════════════════════════════════════════════
