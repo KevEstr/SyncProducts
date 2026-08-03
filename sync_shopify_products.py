@@ -278,7 +278,7 @@ def crear_producto(token: str, producto: dict) -> dict:
             'status': 'active' if producto.get('activo') else 'draft',
             'variants': [{
                 'sku': obtener_sku_producto(producto),
-                'price': str(producto.get('precio_venta_2', 0)),
+                'price': str(producto.get('precio_venta_3', 0)),
                 'inventory_management': 'shopify'
             }]
         }
@@ -296,7 +296,7 @@ def actualizar_producto(token: str, product_id: int, variant_id: int, producto: 
             'id': product_id,
             'variants': [{
                 'id': variant_id,
-                'price': str(producto.get('precio_venta_2', 0))
+                'price': str(producto.get('precio_venta_3', 0))
             }]
         }
     }
@@ -371,6 +371,11 @@ def sincronizar():
 
         try:
             cantidad = producto.get('disponible', 0)
+            precio = producto.get('precio_venta_3')
+            if not precio:
+                log.warning(f"  [{i}/{total}] SIN PRECIO_VENTA_3, saltando: {sku} - {nombre}")
+                ignorados += 1
+                continue
 
             if sku in indice_sku:
                 # ─── ACTUALIZAR producto existente ───
