@@ -35,12 +35,13 @@ CF_R2_PUBLIC_URL     = os.getenv('CF_R2_PUBLIC_URL', '')
 # ──────────────────────────────────────────────
 #  LOGGING
 # ──────────────────────────────────────────────
+_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sync.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('sync.log', encoding='utf-8')
+        logging.FileHandler(_LOG_FILE, encoding='utf-8')
     ]
 )
 log = logging.getLogger(__name__)
